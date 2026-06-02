@@ -23,6 +23,31 @@
     .topic-badge { font-size: 0.75rem; background-color: #e9ecef; color: #495057; }
     .alert-title { font-weight: 500; color: #212529; text-decoration: none; font-size: 0.9rem; }
     .alert-title:hover { color: #0d6efd; text-decoration: underline; }
+    
+    /* ✨ 新增：快訊摘要排版 (預設限制2行，超出變...) */
+    .alert-summary {
+      font-size: 0.8rem;
+      color: #555;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: all 0.3s ease;
+    }
+    .alert-summary.expanded {
+      display: block !important;
+      -webkit-line-clamp: unset !important;
+      overflow: visible !important;
+    }
+    .toggle-summary-btn {
+      font-size: 0.7rem;
+      color: #0d6efd;
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
 
     @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
 
@@ -54,7 +79,7 @@
 <div class="container-fluid py-4 px-xxl-5">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-      <h3 class="fw-bold mb-1">📈 個人股市資訊儀表板</h3>
+      <h3 class="fw-bold mb-1">📈 A</h3>
       <div id="lastUpdate" class="text-muted" style="font-size: 0.8rem;"></div>
     </div>
     <button class="btn btn-primary shadow-sm" onclick="loadData()">🔄 刷新全站資料</button>
@@ -74,9 +99,9 @@
                   <th>股價</th>
                   <th>開始日期</th>
                   <th>結束日期</th>
-                  <th class="text-center">剩餘</th>
-                  <th class="text-center">次數</th>
-                  <th class="text-center">股期</th>
+                  <th>剩餘</th>
+                  <th>次數</th>
+                  <th>股期</th>
                   <th>處置說明</th>
                 </tr>
               </thead>
@@ -91,7 +116,7 @@
       <div class="card p-3 p-md-4 scroll-card">
         <h5 class="fw-bold mb-3">🔔 Google 快訊即時焦點</h5>
         <div class="card-body-scroll" id="gmailList">
-          </div>
+        </div>
       </div>
     </div>
 
@@ -105,10 +130,8 @@
 <script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
 
 <script>
-  // 請確保此處為您最新的 GAS Web App 網址
   const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwb-I-w85itZCNNvt-dimBfVAIsc1KO2Vcqgq_hbfKMjGnZHXygdv74In7MOpssPuWY/exec";
 
-  // 日期解析邏輯 (已修正變數未定義 bug)
   function parseRocDate(dateStr) {
     if (!dateStr) return null;
     let s = dateStr.toString().trim();
@@ -164,7 +187,6 @@
       if (!response.ok) throw new Error('網路回應不正確');
       const combinedData = await response.json();
       
-      // 渲染兩個區塊
       renderDisposalTable(combinedData.disposal_stocks || []);
       renderGmailList(combinedData.gmail_alerts || []);
       
@@ -227,9 +249,20 @@
       return;
     }
     
-    alerts.forEach(row => {
+    alerts.sort((a, b) => {
+      const dateA = new Date(a[0]);
+      const dateB = new Date(b[0]);
+      const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+      const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+      return timeB - timeA; 
+    });
+    
+    alerts.forEach((row, idx) => {
       const rawDate = new Date(row[0]);
       const dateString = isNaN(rawDate.getTime()) ? row[0] : `${rawDate.getMonth()+1}/${rawDate.getDate()} ${rawDate.getHours().toString().padStart(2,'0')}:${rawDate.getMinutes().toString().padStart(2,'0')}`;
+      
+      // ✨ row[5] 即為後端撈出來的新聞摘要內文
+      const summaryText = row[5] ? row[5].trim() : "（暫無內文摘要）";
       
       const div = document.createElement('div');
       div.className = 'list-group-item alert-item border-0 px-0 py-3 mb-2 border-bottom';
@@ -241,12 +274,31 @@
         <div class="mb-1">
           <a href="${row[3]}" target="_blank" class="alert-title">${row[2]}</a>
         </div>
-        <div class="text-end">
+        
+        <div class="mt-2 text-secondary px-2 alert-summary-container">
+          <div id="summary-${idx}" class="alert-summary">${summaryText}</div>
+          ${summaryText.length > 50 ? `<button class="toggle-summary-btn mt-1" onclick="toggleSummary(${idx})">▼ 展開內文</button>` : ''}
+        </div>
+
+        <div class="text-end mt-2">
           <a href="${row[4]}" target="_blank" class="text-secondary" style="font-size: 0.7rem;">在 Gmail 中查看 ↗</a>
         </div>
       `;
       gmailList.appendChild(div);
     });
+  }
+
+  // ✨ 新增：控制內文展開與收合的點擊邏輯
+  function toggleSummary(index) {
+    const summaryDiv = document.getElementById(`summary-${index}`);
+    const btn = summaryDiv.nextElementSibling;
+    if (summaryDiv.classList.contains('expanded')) {
+      summaryDiv.classList.remove('expanded');
+      btn.innerText = "▼ 展開內文";
+    } else {
+      summaryDiv.classList.add('expanded');
+      btn.innerText = "▲ 收合內文";
+    }
   }
 
   window.onload = loadData;
